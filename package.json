@@ -2,7 +2,7 @@
   "name": "memact-memory",
   "private": true,
   "version": "0.0.0",
-  "description": "Durable memory layer for Memact meaning packets, schema packets, and controlled memory actions.",
+  "description": "Durable memory layer for retained evidence, schema packets, and permissioned intent context.",
   "license": "SEE LICENSE IN LICENSE",
   "type": "module",
   "main": "./src/engine.mjs",
@@ -25,6 +25,7 @@
   "keywords": [
     "memact",
     "memory",
+    "intent",
     "schema-packets",
     "meaning-packets",
     "provenance",
