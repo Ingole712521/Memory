@@ -276,6 +276,73 @@ function schemaMemoryFromSchema(schema) {
   };
 }
 
+function intentMemoriesFromResult(intentResult = {}) {
+  if (!intentResult) return [];
+  const intents = Array.isArray(intentResult.predicted_intents)
+    ? intentResult.predicted_intents
+    : Array.isArray(intentResult.intents)
+      ? intentResult.intents
+      : intentResult.id
+        ? [intentResult]
+        : [];
+  const safety = intentResult.safety || {};
+  const generatedAt = normalize(intentResult.generated_at || nowIso(), 80);
+
+  return intents.map((intent) => intentMemoryFromIntent(intent, { safety, generatedAt })).filter(Boolean);
+}
+
+function intentMemoryFromIntent(intent = {}, context = {}) {
+  const id = normalize(intent.id || intent.intent_id || intent.label);
+  if (!id) return null;
+  const evidence = Array.isArray(intent.evidence) ? intent.evidence : [];
+  const evidenceIds = unique(evidence.map((item) => item.source_id || item.id || item.packet_id));
+  const sources = dedupeSources(evidence.map((item) => ({
+    url: item.url,
+    domain: item.domain,
+    title: item.label || item.title,
+    occurred_at: item.timestamp,
+    application: item.application,
+  })));
+  const confidence = clamp(intent.confidence ?? 0);
+  const label = normalize(intent.label || id, 180);
+
+  return {
+    id: `memory:intent:${slug(id)}`,
+    type: "intent_memory",
+    label,
+    summary: normalize(intent.summary || `Intent hypothesis: ${label}`, 360),
+    strength: confidence,
+    survival_score: confidence,
+    intent_id: id,
+    intent_category: normalize(intent.category, 120),
+    confidence,
+    confidence_level: normalize(intent.confidence_level, 80),
+    confidence_basis: intent.confidence_basis || {},
+    evidence_ids: evidenceIds,
+    evidence,
+    alternative_intents: Array.isArray(intent.alternative_intents) ? intent.alternative_intents : [],
+    allowed_actions: unique(intent.allowed_actions),
+    blocked_actions: unique(intent.blocked_actions),
+    notes: unique(intent.notes),
+    safety: context.safety || {},
+    themes: unique([intent.category, ...(intent.themes || [])]),
+    sources,
+    reasons: unique([
+      intent.confidence_level ? `${intent.confidence_level} confidence intent hypothesis` : "intent hypothesis",
+      evidenceIds.length ? `${evidenceIds.length} evidence item${evidenceIds.length === 1 ? "" : "s"}` : "",
+    ]),
+    first_seen_at: context.generatedAt || nowIso(),
+    last_seen_at: context.generatedAt || nowIso(),
+    provenance: {
+      system: "intent",
+      claim_type: "intent_hypothesis",
+      schema_version: "memact.intent.v0",
+      intent_id: id,
+    },
+    state: "active",
+  };
+}
+
 function decayMemory(memory, options = {}) {
   const decayPerDay = Number(options.decayPerDay ?? DEFAULT_DECAY_PER_DAY);
   const ageDays = daysSince(memory.last_seen_at || memory.first_seen_at);
@@ -297,7 +364,9 @@ function mergeDuplicateMemories(memories) {
   for (const memory of memories) {
     const key = isSchemaMemory(memory)
       ? `${memory.type}|${memory.schema_id}`
-      : `${memory.type}|${memory.source_packet_id || memory.label}`;
+      : isIntentMemory(memory)
+        ? `${memory.type}|${memory.intent_id || memory.label}`
+        : `${memory.type}|${memory.source_packet_id || memory.label}`;
     const existing = byKey.get(key);
     if (!existing) {
       byKey.set(key, memory);
@@ -376,6 +445,26 @@ function buildMemoryGraph(memories, relations = []) {
         edges.push({ from: memory.id, to: activityId, type: "supported_by_packet", weight: memory.strength });
       }
     }
+
+    if (isIntentMemory(memory)) {
+      const intentNodeId = memory.intent_id || `intent:${slug(memory.label)}`;
+      addNode({
+        id: intentNodeId,
+        type: "intent_hypothesis",
+        label: memory.label,
+        confidence: memory.confidence,
+      });
+      edges.push({ from: memory.id, to: intentNodeId, type: "stores_intent_hypothesis", weight: memory.strength });
+
+      for (const evidenceId of memory.evidence_ids || []) {
+        edges.push({
+          from: memory.id,
+          to: evidenceId,
+          type: MEMORY_RELATION_TYPES.EVIDENCED_BY,
+          weight: memory.strength,
+        });
+      }
+    }
   }
 
   for (const rawRelation of Array.isArray(relations) ? relations : []) {
@@ -439,6 +528,7 @@ function refreshMemoryStore(memoryStore = {}) {
     memories,
     relations,
     activity_memories: memories.filter((memory) => memory.type === "activity_memory"),
+    intent_memories: memories.filter(isIntentMemory),
     schema_packets: memories.filter(isSchemaMemory),
     cognitive_schema_memories: memories.filter(isSchemaMemory),
     graph,
@@ -446,6 +536,7 @@ function refreshMemoryStore(memoryStore = {}) {
     stats: {
       memoryCount: memories.length,
       activityMemoryCount: memories.filter((memory) => memory.type === "activity_memory").length,
+      intentMemoryCount: memories.filter(isIntentMemory).length,
       schemaMemoryCount: memories.filter(isSchemaMemory).length,
       sourceCount: graph.nodes.filter((node) => node.type === "source_memory").length,
     },
@@ -482,16 +573,17 @@ function normalizeMemoryInput(input = {}) {
   };
 }
 
-export function buildMemoryStore({ inference, schema, previousMemory = null, options = {} } = {}) {
+export function buildMemoryStore({ inference, schema, intent, previousMemory = null, options = {} } = {}) {
   const activityMemories = (Array.isArray(inference?.records) ? inference.records : [])
     .map((record) => activityMemoryFromRecord(record, options))
     .filter(Boolean);
   const schemaPackets = (Array.isArray(schema?.schemas) ? schema.schemas : [])
     .map(schemaMemoryFromSchema)
     .filter(Boolean);
+  const intentMemories = intentMemoriesFromResult(intent);
   const previousMemories = Array.isArray(previousMemory?.memories) ? previousMemory.memories : [];
   const previousRelations = Array.isArray(previousMemory?.relations) ? previousMemory.relations : [];
-  const merged = mergeDuplicateMemories([...previousMemories, ...activityMemories, ...schemaPackets])
+  const merged = mergeDuplicateMemories([...previousMemories, ...activityMemories, ...schemaPackets, ...intentMemories])
     .map((memory) => decayMemory(memory, options))
     .sort((left, right) => right.strength - left.strength || left.label.localeCompare(right.label));
   const relations = previousRelations.map(normalizeRelationInput);
@@ -503,6 +595,7 @@ export function buildMemoryStore({ inference, schema, previousMemory = null, opt
     source: {
       inference_schema_version: inference?.schema_version || null,
       schema_schema_version: schema?.schema_version || null,
+      intent_schema_version: intent?.schema_version || null,
       previous_memory_version: previousMemory?.schema_version || null,
     },
     thresholds: {
@@ -512,6 +605,7 @@ export function buildMemoryStore({ inference, schema, previousMemory = null, opt
     memories: merged,
     relations,
     activity_memories: merged.filter((memory) => memory.type === "activity_memory"),
+    intent_memories: merged.filter(isIntentMemory),
     schema_packets: merged.filter(isSchemaMemory),
     cognitive_schema_memories: merged.filter(isSchemaMemory),
     graph,
@@ -519,6 +613,7 @@ export function buildMemoryStore({ inference, schema, previousMemory = null, opt
     stats: {
       memoryCount: merged.length,
       activityMemoryCount: merged.filter((memory) => memory.type === "activity_memory").length,
+      intentMemoryCount: merged.filter(isIntentMemory).length,
       schemaMemoryCount: merged.filter(isSchemaMemory).length,
       sourceCount: graph.nodes.filter((node) => node.type === "source_memory").length,
     },
@@ -776,6 +871,50 @@ export function rememberSchema(schemaPacket, memoryStore = {}) {
   return { memoryStore: next, action };
 }
 
+export function rememberIntent(intentResult, memoryStore = {}) {
+  const memories = intentMemoriesFromResult(intentResult);
+  if (!memories.length) {
+    return {
+      memoryStore,
+      action: makeAction("remember_intent", "", {}, false, "intent result did not include predicted intents"),
+    };
+  }
+  const next = buildMemoryStore({
+    inference: { records: [], schema_version: "memact.inference.v0" },
+    schema: { schemas: [], schema_version: "memact.schema.v0" },
+    intent: intentResult,
+    previousMemory: memoryStore,
+  });
+  const action = makeAction("remember_intent", memories[0].id, { intent_count: memories.length }, true, "intent retained");
+  next.actions = [...(next.actions || []), action];
+  return { memoryStore: next, memories, action };
+}
+
+export function retrieveIntents(query, memoryStore = {}, options = {}) {
+  return retrieveMemories(query, {
+    ...memoryStore,
+    memories: (memoryStore?.memories || []).filter(isIntentMemory),
+  }, {
+    top: Number(options.top ?? 4),
+    minScore: Number(options.minScore ?? 0.08),
+  });
+}
+
+export function linkIntentToSchema(intentId, schemaId, memoryStore = {}) {
+  return relateMemories(intentId, schemaId, MEMORY_RELATION_TYPES.BUILDS_ON, {
+    reason: "intent hypothesis used schema context",
+  }, memoryStore);
+}
+
+export function linkIntentToEvidence(intentId, evidenceId, memoryStore = {}) {
+  return addRelation(memoryStore, {
+    from: intentId,
+    to: evidenceId,
+    type: MEMORY_RELATION_TYPES.EVIDENCED_BY,
+    evidence: { reason: "intent hypothesis cites approved evidence" },
+  }, makeAction("link_intent_to_evidence", intentId, { evidence_id: normalize(evidenceId) }, true, "intent linked to evidence"));
+}
+
 export function reinforceMemory(memoryId, evidence = {}, memoryStore = {}) {
   const action = makeAction("reinforce_memory", memoryId, evidence, true, "memory reinforced by evidence");
   const result = applyMemoryAction(memoryStore, action, (memory) => ({
@@ -1026,6 +1165,7 @@ export function formatMemoryReport(memoryStore = {}) {
     `Memories: ${memoryStore.stats?.memoryCount || 0}`,
     `Activity memories: ${memoryStore.stats?.activityMemoryCount || 0}`,
     `Cognitive schema memories: ${memoryStore.stats?.schemaMemoryCount || 0}`,
+    `Intent memories: ${memoryStore.stats?.intentMemoryCount || 0}`,
     "",
     "Strongest Memories",
   ];
@@ -1057,6 +1197,7 @@ function applyMemoryAction(memoryStore, action, mutate) {
     ...memoryStore,
     memories,
     activity_memories: memories.filter((memory) => memory.type === "activity_memory"),
+    intent_memories: memories.filter(isIntentMemory),
     schema_packets: memories.filter(isSchemaMemory),
     cognitive_schema_memories: memories.filter(isSchemaMemory),
     graph: buildMemoryGraph(memories, memoryStore.relations || []),
@@ -1066,6 +1207,7 @@ function applyMemoryAction(memoryStore, action, mutate) {
       ...(memoryStore.stats || {}),
       memoryCount: memories.length,
       activityMemoryCount: memories.filter((memory) => memory.type === "activity_memory").length,
+      intentMemoryCount: memories.filter(isIntentMemory).length,
       schemaMemoryCount: memories.filter(isSchemaMemory).length,
     },
   };
@@ -1077,6 +1219,7 @@ function formatReasons(memory) {
     ...(memory.reasons || []),
     isSchemaMemory(memory) && memory.core_interpretation ? `frame: ${memory.core_interpretation}` : "",
     isSchemaMemory(memory) ? `${memory.support || 0} supporting packets` : "",
+    isIntentMemory(memory) && memory.confidence_level ? `intent confidence: ${memory.confidence_level}` : "",
     memory.sources?.length ? `${memory.sources.length} source${memory.sources.length === 1 ? "" : "s"}` : "",
   ]);
   return reasons.length ? reasons.join(", ") : "it has retained evidence";
@@ -1084,4 +1227,8 @@ function formatReasons(memory) {
 
 function isSchemaMemory(memory) {
   return memory?.type === "cognitive_schema_memory" || memory?.type === "schema_memory";
+}
+
+function isIntentMemory(memory) {
+  return memory?.type === "intent_memory";
 }

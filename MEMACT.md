@@ -8,15 +8,33 @@ Understand what users are trying to do.
 
 Memact is infrastructure that helps apps predict user intent from approved digital activity, without giving them raw access to a user's private data.
 
-This repo is the Memory layer. It stores retained evidence, schema packets, graph objects, claims, and retrieval context for downstream intent-aware apps.
+This repo is the Memory layer. It stores what survives: semantic evidence, schema packets, intent hypotheses, evidence links, corrections, forgetting actions, and scoped retrieval context.
 
 ## System position
 
 ```text
-Access -> Capture -> Inference -> Schema -> Memory -> Intent
+Website manages -> Access gates -> Capture records -> Inference understands -> Schema groups -> Intent predicts -> Memory stores -> Apps consume
 ```
 
-Memory decides what survives and what can be retrieved later. It does not capture browser data, infer meaning from raw pages, or expose raw graph data unless Access grants the right scope.
+Memory decides what survives and what can be retrieved later. It stores intent results after Intent predicts them. It does not capture browser data, infer meaning from raw pages, predict current intent, or expose raw graph data unless Access grants the right scope.
+
+## What this repo owns
+
+- activity memory
+- semantic evidence memory
+- schema memory
+- intent memory
+- source/theme memory
+- memory graph and evidence links
+- corrections, forgetting, and retrieval context
+
+## What this repo does not own
+
+- browser/page capture
+- semantic inference from raw captures
+- schema formation
+- current intent prediction
+- app-facing permission checks
 
 ## Copy rules
 

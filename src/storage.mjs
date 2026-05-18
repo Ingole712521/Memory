@@ -2,8 +2,12 @@ import { readFile, writeFile } from "node:fs/promises";
 import {
   createMemory,
   deleteMemory,
+  linkIntentToEvidence,
+  linkIntentToSchema,
   listMemories,
   readMemory,
+  rememberIntent,
+  retrieveIntents,
   updateMemory,
 } from "./engine.mjs";
 
@@ -51,6 +55,27 @@ export function createMemoryRepository(adapter) {
     async delete(memoryId, options = {}) {
       const current = await this.load();
       const result = deleteMemory(memoryId, current, options);
+      await this.save(result.memoryStore);
+      return result;
+    },
+    async rememberIntent(intentResult) {
+      const current = await this.load();
+      const result = rememberIntent(intentResult, current);
+      await this.save(result.memoryStore);
+      return result;
+    },
+    async retrieveIntents(query, options = {}) {
+      return retrieveIntents(query, await this.load(), options);
+    },
+    async linkIntentToSchema(intentId, schemaId) {
+      const current = await this.load();
+      const result = linkIntentToSchema(intentId, schemaId, current);
+      await this.save(result.memoryStore);
+      return result;
+    },
+    async linkIntentToEvidence(intentId, evidenceId) {
+      const current = await this.load();
+      const result = linkIntentToEvidence(intentId, evidenceId, current);
       await this.save(result.memoryStore);
       return result;
     },

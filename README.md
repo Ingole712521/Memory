@@ -2,7 +2,8 @@
 
 Version: `v0.0`
 
-Memory is the durable store for Memact's retained evidence and virtual schema packets.
+Memory is the durable store for Memact's retained evidence, schema packets, and
+intent hypotheses.
 It is the shared layer that lets different Memact apps work from the same
 structured memory instead of rebuilding context from scratch.
 
@@ -12,7 +13,9 @@ It owns one job:
 decide what survives and retrieve it later
 ```
 
-Memory does not capture browser data, infer meaning from raw pages, or generate final answers. It stores, updates, retrieves, links, weakens, and forgets memory records.
+Memory does not capture browser data, infer meaning from raw pages, predict
+current intent, or generate final answers. It stores, updates, retrieves, links,
+weakens, and forgets memory records.
 
 Access decides who can ask Memact to perform work. Memory should not expose raw
 nodes, edges, evidence, or graph reads unless Access has granted the app an
@@ -21,14 +24,25 @@ appropriate scope.
 ## What This Repo Owns
 
 - Stores meaningful activity memories.
+- Stores semantic evidence memories.
 - Stores virtual cognitive-schema memories.
-- Stores first-class memory nodes, memory edges, evidence links, claims, and influence paths.
+- Stores intent memories after Intent predicts them.
+- Stores first-class memory nodes, memory edges, evidence links, claims, and scoped relation paths.
 - Stores source/theme links used for retrieval.
 - Exposes CRUD APIs.
 - Builds compact RAG context for Website/API answers.
 - Tracks confidence breakdowns, negative evidence, competing origins, graph snapshots, and source metadata.
 - Tracks memory actions such as reinforcement, weakening, assimilation, accommodation, supersession, and forgetting.
 - Keeps provenance so retrieved context can be traced back to evidence.
+
+## What This Repo Does Not Own
+
+- Browser/page capture.
+- Semantic inference from raw captures.
+- Schema formation.
+- Current intent prediction.
+- App-facing permission checks.
+- Raw private data export.
 
 ## Memory Types
 
@@ -37,6 +51,11 @@ appropriate scope.
 
 - `cognitive_schema_memory`
   A virtual schema packet from Schema. This is the primary retrieval surface.
+
+- `intent_memory`
+  An evidence-backed intent hypothesis from Intent. It stores the predicted
+  intent, confidence, alternatives, allowed actions, blocked actions, and
+  evidence links.
 
 - `source_memory`
   A source node that supports a memory.
@@ -50,9 +69,12 @@ appropriate scope.
 - `evidence_link`
   A source URL, timestamp, snippet, score, and claim support record.
 
-- `influence_path`
-  Ordered steps that a thought-source app can use when a user asks how a thought
-  may connect to earlier activity.
+- `correction_record`
+  User or app feedback that updates a memory without rewriting the original
+  evidence.
+
+- `forgetting_record`
+  A record of weakening, revocation, or forgetting actions.
 
 - `claim`
   An inferred statement separated from raw evidence and final wording.
@@ -67,10 +89,14 @@ updateMemory(id, patch)
 deleteMemory(id, { hard })
 rememberPacket(packet)
 rememberSchema(schema)
+rememberIntent(intent)
 retrieveCognitiveSchemas(query)
+retrieveIntents(query)
 retrieveMemories(query)
 buildRagContext(query, memoryStore)
 createEvidenceLink(evidence)
+linkIntentToSchema(intentId, schemaId)
+linkIntentToEvidence(intentId, evidenceId)
 buildInfluencePathsForThought(thought, memoryStore)
 createClaim(claim)
 relateMemories(a, b, relation)
@@ -100,25 +126,25 @@ The context is intentionally small. If an external model is used later, it shoul
 
 ## App Surfaces
 
-Memory is not limited to thought-origin answers. App layers can use the same
-memory graph for:
+App layers can use the same memory graph for:
 
 - digital consumption pattern reports
 - personal knowledge dictionaries from newly encountered concepts
 - research maps across articles, videos, papers, searches, and notes
 - decision-support checks for repeated cues or one-sided inputs
 - learning timelines that show how a topic became familiar
-- thought-source tracing when a user explicitly asks for it
+- scoped intent recall when a user or app needs prior permissioned context
+- thought-source tracing when a user explicitly asks for that specific surface
 
 ## API Boundary
 
-Apps should use Memact to capture allowed activity, form schemas, and retrieve
-permitted summaries. Apps should not receive a blanket export of a user's
-memory graph.
+Apps should use Memact to capture allowed activity, form schemas, predict intent,
+store durable context, and retrieve permitted summaries. Apps should not receive
+a blanket export of a user's memory graph.
 
 Access scopes define what can leave Memory:
 
-- `memory:read_summary` for compact memory summaries
+- `memory:read_summary` for compact memory and intent-context summaries
 - `memory:read_evidence` for cited evidence cards
 - `memory:read_graph` for permitted nodes and edges
 
@@ -131,12 +157,12 @@ AI can help word an answer later, but it should not invent sources, causes, or c
 - evidence links
 - memory nodes
 - memory edges
-- influence paths
+- scoped relation paths
 - claims
 - graph snapshots
 
-For thought-source apps, unknown origin is a valid result when support is weak.
-For other apps, the answer may simply be a pattern, dictionary entry, timeline,
+Unknown or low-confidence context is a valid result when support is weak. The
+answer may simply be an intent hypothesis, pattern, dictionary entry, timeline,
 or memory summary.
 
 ## Run Locally
