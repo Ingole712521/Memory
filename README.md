@@ -20,7 +20,7 @@ for user-owned personal cloud storage later.
 - Capture.
 - Semantic inference.
 - Schema formation.
-- Studio feature implementation.
+- Playground feature implementation.
 - API key verification.
 
 ## Current Code

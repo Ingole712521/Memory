@@ -894,7 +894,7 @@ export function rememberFeatureOutput(output = {}, memoryStore = {}) {
     strength: clamp(output.confidence ?? 0.6),
     feature_id: featureId,
     feature_refs: [featureId],
-    provenance: { system: "studio", claim_type: "feature_output" },
+    provenance: { system: "playground", claim_type: "feature_output" },
     state: "active",
   })
   return createMemory(memory, memoryStore)
