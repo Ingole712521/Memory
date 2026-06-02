@@ -3,7 +3,7 @@
 Memact means act-on-memory.
 
 Memory stores the accepted user context that survives after Wiki review. Apps
-can propose context, Access checks permission, Schema shapes it, Wiki lets the
+can propose context, Access checks permission, Context shapes it, Wiki lets the
 user accept/edit/reject/delete it, and Memory stores what remains useful.
 
 Storage is local-first today, with a path for user-owned personal cloud storage
@@ -12,7 +12,7 @@ later.
 ## Owns
 
 - Durable memory records.
-- Schema memories.
+- Context memories.
 - Accepted Wiki entries.
 - App-safe summaries.
 - Corrections and forgetting records.
@@ -23,7 +23,7 @@ later.
 ## Does Not Own
 
 - Capture.
-- Schema formation.
+- Context proposal formation.
 - Wiki moderation UI.
 - API key verification.
 - Full-Wiki access for apps.

@@ -13,6 +13,6 @@ The Memory engine supports CRUD and RAG-style retrieval:
 - build compact RAG context from allowed memories
 - keep raw graph-style access behind a separate permission boundary
 
-Memory does not check app access, shape category schemas, or decide what the
-user accepts. Access, Schema, and Wiki handle those steps before Memory stores
+Memory does not check app access, shape category context, or decide what the
+user accepts. Access, Context, and Wiki handle those steps before Memory stores
 what survives.
