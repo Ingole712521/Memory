@@ -1,6 +1,9 @@
 import test from "node:test"
 import assert from "node:assert/strict"
+import { TemplateContextWorker } from "../src/context-worker.mjs"
 import { buildContextForFeature, forgetMemory, rememberFeatureOutput, rememberInferenceRecord, rememberSchemaPacket, retrieveContext } from "../src/engine.mjs"
+import { semanticMatchingExamples } from "../src/semantic-matching.mjs"
+import { buildTaskContextPacket, filterApprovedTaskMemory } from "../src/task-context-packet.mjs"
 
 test("schema packet remembered", () => {
   const result = rememberSchemaPacket({ id: "shopping_discount", confidence: 0.8, support: 3, label: "Shopping Discount" })
@@ -70,4 +73,103 @@ test("adaptive article overview output is stored", () => {
   })
   assert.equal(result.memory.type, "feature_output_memory")
   assert.equal(result.memory.feature_id, "adaptive-article-overview")
+})
+
+test("task context packet filters to approved field memory only", () => {
+  const memoryRecords = [
+    {
+      id: "mem_diet_pref",
+      field_path: "diet.preference",
+      value: "vegetarian",
+      category: "fitness",
+      status: "accepted",
+      sensitivity: "normal",
+      allowed_app_ids: ["nutriplan-lite"],
+      allowed_actor_types: ["memact_worker"],
+      source_app_id: "user"
+    },
+    {
+      id: "mem_pending",
+      field_path: "fitness.goal",
+      value: "muscle gain",
+      category: "fitness",
+      status: "pending",
+      sensitivity: "normal",
+      allowed_app_ids: ["nutriplan-lite"]
+    },
+    {
+      id: "mem_raw",
+      field_path: "raw_capture_events",
+      value: "raw timeline",
+      category: "fitness",
+      status: "accepted",
+      sensitivity: "high",
+      allowed_app_ids: ["nutriplan-lite"]
+    },
+    {
+      id: "mem_other_app",
+      field_path: "diet.allergy",
+      value: "peanuts",
+      category: "fitness",
+      status: "accepted",
+      sensitivity: "sensitive",
+      allowed_app_ids: ["other-app"]
+    }
+  ]
+
+  const approved = filterApprovedTaskMemory(memoryRecords, {
+    target_app_id: "nutriplan-lite",
+    categories: ["fitness"],
+    actor: { type: "memact_worker" }
+  })
+  assert.equal(approved.length, 1)
+  assert.equal(approved[0].field_path, "diet.preference")
+
+  const packet = buildTaskContextPacket({
+    target_app_id: "nutriplan-lite",
+    connection_id: "conn_123",
+    purpose: "onboarding_prefill",
+    requested_fields: ["food restrictions"],
+    categories: ["fitness"],
+    approved_memory_records: memoryRecords
+  })
+  assert.equal(packet.schema_version, "memact.task_context_packet.v0")
+  assert.equal(packet.retention, "none")
+  assert.deepEqual(packet.forbidden_context, ["full_profile", "raw_capture_events", "unapproved_memory"])
+  assert.equal(packet.allowed_context.length, 1)
+  assert.equal(packet.allowed_context[0].field_path, "diet.preference")
+})
+
+test("template worker runs on packet without full memory access", async () => {
+  const packet = buildTaskContextPacket({
+    target_app_id: "nutriplan-lite",
+    connection_id: "conn_123",
+    purpose: "onboarding_prefill",
+    requested_fields: ["food restrictions"],
+    categories: ["fitness"],
+    approved_memory_records: [
+      {
+        field_path: "diet.allergy",
+        value: "peanuts",
+        category: "fitness",
+        status: "accepted",
+        sensitivity: "sensitive",
+        allowed_app_ids: ["nutriplan-lite"],
+        allowed_actor_types: ["memact_worker"]
+      }
+    ],
+    allowedSensitiveFieldPaths: ["diet.allergy"]
+  })
+  const worker = new TemplateContextWorker()
+  const result = await worker.run(packet)
+  assert.equal(result.status, "ok")
+  assert.equal(result.safety.memory_blind, true)
+  assert.equal(result.safety.received_full_profile, false)
+  assert.equal(result.output.fields["diet.allergy"], "peanuts")
+})
+
+test("semantic matching examples include NutriPlan-friendly food restrictions mapping", () => {
+  const example = semanticMatchingExamples.find((item) => item.app_field === "food restrictions")
+  assert.ok(example)
+  assert.deepEqual(example.memact_fields, ["diet.preference", "diet.allergy"])
 })

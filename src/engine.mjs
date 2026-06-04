@@ -547,11 +547,22 @@ function normalizeMemoryInput(input = {}) {
   const id = normalize(input.id) || `memory:manual:${slug(input.label || input.summary || Date.now())}`;
   const type = normalize(input.type) || "activity_memory";
   const strength = clamp(input.strength ?? input.survival_score ?? DEFAULT_RETENTION_THRESHOLD);
+  const fieldPath = normalize(input.field_path || input.path || input.attributes?.field_path, 180);
+  const category = normalize(input.category || input.attributes?.category || input.provenance?.category, 120);
+  const status = normalize(input.status || input.state || "active", 80);
+  const sensitivity = normalize(input.sensitivity || input.attributes?.sensitivity || "normal", 80).toLowerCase();
   return {
     id,
     type,
     label: normalize(input.label || id, 180),
     summary: normalize(input.summary, 500),
+    field_path: fieldPath,
+    category,
+    status,
+    sensitivity,
+    source_app_id: normalize(input.source_app_id || input.provenance?.app_id || input.provenance?.source_app_id, 160),
+    allowed_app_ids: Array.isArray(input.allowed_app_ids) ? unique(input.allowed_app_ids) : [],
+    allowed_actor_types: Array.isArray(input.allowed_actor_types) ? unique(input.allowed_actor_types) : ["memact_worker"],
     virtual: Boolean(input.virtual),
     cognitive_schema: Boolean(input.cognitive_schema || type === "cognitive_schema_memory"),
     strength,
@@ -570,6 +581,10 @@ function normalizeMemoryInput(input = {}) {
     ...input,
     id,
     type,
+    field_path: fieldPath,
+    category,
+    status,
+    sensitivity,
   };
 }
 

@@ -19,6 +19,9 @@
     "./scoring": "./src/scoring.mjs",
     "./source-metadata": "./src/source-metadata.mjs",
     "./storage": "./src/storage.mjs",
+    "./semantic-matching": "./src/semantic-matching.mjs",
+    "./task-context-packet": "./src/task-context-packet.mjs",
+    "./context-worker": "./src/context-worker.mjs",
     "./temporal-paths": "./src/temporal-paths.mjs",
     "./cli": "./src/cli.mjs"
   },
